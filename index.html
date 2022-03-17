@@ -144,11 +144,12 @@
 	<script>
       var expanded = [];
       var out = [];
-		var sortBy = "memory"; // [cpu, mem, disk, net, gpu]
-		var doBigSpacing = 1; // [0, 1]
+			var outStorage = [];
+		  var sortBy = "memory"; // [cpu, mem, disk, net, gpu]
+		  var doBigSpacing = 1; // [0, 1]
 
       var totMem = 16 * 1073741824; // Needs to be set to the servers total memory // Will be retrieved automatically in future
-		var totCPU = 12 * 100; // Needs to be set to the servers total CPU // Will be retrieved automatically in future
+		  var totCPU = 12 * 100; // Needs to be set to the servers total CPU // Will be retrieved automatically in future
       var loc, raw, cores;
 		
 		async function bytesToSize(bytes) {
@@ -174,27 +175,25 @@
 		   }
 		}
 
-      async function doGR(data, bigSpacing, cpuUsage, id, isSub, length){
-         if (!isSub) return await groupRender(data, bigSpacing, cpuUsage, id, isSub, length)
-         return "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;" + data.name;
+
+      async function subList(data) {
+				 expanded.indexOf(data.name) === -1 ? expanded.push(data.name) : expanded.splice(expanded.indexOf(data.name), 1);
       }
 
-      async function subList(isSub, id) {
-         expanded.push(id);
-         await htmlGenerator(data, isSub, id)
-      }
-
-		async function groupRender(data, bigSpacing, cpuUsage, id, isSub, length) {
+		async function groupRender(data, bigSpacing, cpuUsage, length) {
+				 if (expanded.indexOf(data.name) !== -1) {
+						for (element in data["subps"]) {
+							data["subps"][element].name = "&nbsp;&nbsp;&nbsp;&nbsp;" + data["subps"][element].name
+							outStorage.push(await htmlGenerator(data["subps"][element]));
+						}
+				 }
          if (!data["grouped"] == true) return "&nbsp;&nbsp;&nbsp;&nbsp;" + data.name;
-         var temp = `subList(1, ${id});`;
-         var onClick = `${temp}`
-         var name = '<button style="border: none;" onclick="'+ onClick +'"> ' + '>&nbsp;' + data.name + ' (' + Object.keys(data["subps"]).length + ')</button>';
-         for (element in data["subps"]) {
-            //
-         }
+         var onClick = `subList(${JSON.stringify(data)});`;
+				 expanded.indexOf(data.name) === -1 ? directional = ">" : directional = "<div style='transform: rotate(+90deg); display: inline-block; font-size: 15px;'>></div>";
+         var name = '<button style="border: none;" onclick=\''+ onClick +'\'> ' + directional + "<div style='display: inline-block; font-size: 15px;'>" + '&nbsp;' + data.name + "</div>" + ' (' + Object.keys(data["subps"]).length + ')</button>';
          return name;
       }
-		async function htmlGenerator(data, isSub, direct) {
+		async function htmlGenerator(data) {
 		var bigSpacing = "";
       var cpuUsage = ((100 * data.cpu) / (100 * parseInt(cores)));
       var id = Math.floor(Math.random() * 100000);
@@ -203,7 +202,7 @@
 	<div id='${id}' style='float: left; width: 15%;'>
 		<div>
 			<pr>
-				${await doGR(data, bigSpacing, cpuUsage, id, isSub, out.length - 1)}
+				${await groupRender(data, bigSpacing, cpuUsage, id, out.length - 1)}
 				<pr>&nbsp;</pr>
 			</pr>
 		</div>
@@ -261,7 +260,6 @@
 	<br style='clear: left;' />
 </div>
 <div style='clear: both; line-height: -20px;'></div>`;
-if (direct) return out.splice(direct, 0, xx);;
 return xx;
 		}
 		
@@ -277,18 +275,18 @@ return xx;
 		      var previous = seen[entry.name] ?? {};
 		      // var temp = JSON.parse(JSON.stringify(entry));
 		      if (!previous["grouped"]) {
+						 previous["subps"] = [JSON.parse(JSON.stringify(previous))]
 		         previous["grouped"] = true;
 		         previous.pid = "";
 		         previous.ppid = "";
 		         previous.ctime = "";
 		         previous.elapsed = "";
 		         previous.timestamp = "";
-		         previous["subps"] = []; 
-		         previous["subps"] = [entry]
 		       }
 		       previous["memory"] += entry.memory;
 		       previous["cpu"] += entry.cpu;
 		       previous["subps"].push(entry);
+					 previous["subps"].sort(function(a, b) {return b[sortBy] - a[sortBy]})
 		     } else {
 		       seen[entry.name] = entry;
 		     }
@@ -301,13 +299,15 @@ return xx;
 		    cpu += data.cpu;
 		    if (data.name.includes("Memory Compression")) continue;
             out.push(await htmlGenerator(data));
+						out = out.concat(outStorage);
+						outStorage = [];
 		    };
 		  document.getElementById("cpuUsage").innerHTML = ((100 * cpu) / (100 * parseInt(cores))).toFixed(0).toString() + "%";
 		  document.getElementById("memUsage").innerHTML = `${mem}`.substring(0, 2) + "%";
 		  try {
 		    loc.appendChild(loc.innerHTML = out.join(""));
 		  } catch (error) {
-		    console.log(error, error.stack);
+		    //console.log(error, error.stack);
 		  }
 		  console.timeEnd("render")
 		}
