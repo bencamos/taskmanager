@@ -1,0 +1,327 @@
+<!doctype html>
+<head>
+	<title>Task Manager</title>
+	<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+</head>
+<body>
+	<style>
+		body, h1, h2, h3, h4, h5, h6  {
+		font-family: "Segoe UI", Arial, sans-serif;
+		font-size: 15px;
+      position: relative;
+		}
+		.vertical-line {
+		position: relative;
+		border-left:1px solid #808080;
+		float: left;
+		width: -25%;
+		text-align: right;
+		}
+		.aligner1 {
+		float: left; 
+		width: 7.5%; 
+		text-align: right;
+		}
+		.headerUsage {
+		font-size: 22.5px;
+		text-align: right;
+		}
+		button {
+		background: transparent;
+		border: none !important;
+		font-weight:normal;
+		}
+		.zeroUsage { /* 0% */
+		background-color: #FFF4C4;
+		}
+		.someUsage { /* 0+% */
+		background-color: #F9ECA8;
+		}
+		.quartUsage { /* 25+% */
+		background-color: #FFD264;
+		}
+		.halfUsage { /* 50+% */
+		background-color: #FCA71D;
+		}
+		.halfHalfUsage { /* 75+% */
+		background-color: #FC6C29;
+		}
+		.fullUsage { /* 99+% */
+		background-color: #FC0D1B;
+		}
+	</style>
+	<!-- Start Header Section-->
+	<div style="width: 100%; display: flex; ">
+		<div style="float: left; width: 15%;">
+			<button onclick = "sortBy = 'name'">
+				<div>
+					<pr class="headerUsage"></pr>
+					<pr>&nbsp;</pr>
+					<br>
+					<pr style="line-height: 15px;">Name</pr>
+				</div>
+			</button>
+		</div>
+		<div class="vertical-line"></div>
+		<div style="float: left; width: 7.5%; text-align: right;">
+			<button onclick = "sortBy = 'pid'">
+				<div>
+					<pr class="headerUsage"></pr>
+					<br>
+					<pr style="line-height: 15px;">PID</pr>
+				</div>
+			</button>
+		</div>
+		<div class="vertical-line aligner1">
+			<button onclick = "sortBy = 'cpu'">
+				<div>
+					<div>
+						<pr class="headerUsage" id="cpuUsage">nul</pr>
+					</div>
+					<div>
+						<pr style="line-height: 15px;">CPU</pr>
+					</div>
+				</div>
+			</button>
+		</div>
+		<div class="vertical-line aligner1">
+			<button onclick = "sortBy = 'mem'">
+				<div>
+					<div>
+						<pr class="headerUsage" id="memUsage">nul</pr>
+					</div>
+					<div>
+						<pr style="line-height: 15px;">Memory</pr>
+					</div>
+				</div>
+			</button>
+		</div>
+		<div class="vertical-line aligner1">
+			<button onclick = "sortBy = 'disk'">
+				<div>
+					<div>
+						<pr class="headerUsage" id="diskUsage">nul</pr>
+					</div>
+					<div>
+						<pr style="line-height: 15px;">Disk</pr>
+					</div>
+				</div>
+			</button>
+		</div>
+		<div class="vertical-line aligner1">
+			<button onclick = "sortBy = 'net'">
+				<div>
+					<div>
+						<pr class="headerUsage" id="netUsage">nul</pr>
+					</div>
+					<div>
+						<pr style="line-height: 15px;">Network</pr>
+					</div>
+				</div>
+			</button>
+		</div>
+		<div class="vertical-line aligner1">
+			<button onclick = "sortBy = 'gpu'">
+				<div>
+					<div>
+						<pr class="headerUsage" id="gpuUsage">nul</pr>
+					</div>
+					<div>
+						<pr style="line-height: 15px;">GPU</pr>
+					</div>
+				</div>
+			</button>
+		</div>
+		<div class="vertical-line aligner1"></div>
+		<br style="clear: left;" />
+	</div>
+	<div style="clear: both; line-height: -20px;">
+		<hr style="color: #808080;">
+	</div>
+	<!-- End Header Section-->
+	<!-- Start Process List Section-->
+	<div id="psList"></div>
+	<script>
+      var expanded = [];
+      var out = [];
+		var sortBy = "memory"; // [cpu, mem, disk, net, gpu]
+		var doBigSpacing = 1; // [0, 1]
+
+      var totMem = 16 * 1073741824; // Needs to be set to the servers total memory // Will be retrieved automatically in future
+		var totCPU = 12 * 100; // Needs to be set to the servers total CPU // Will be retrieved automatically in future
+      var loc, raw, cores;
+		
+		async function bytesToSize(bytes) {
+		  return (bytes / 1024 / 1024).toFixed(2).toString() + "MB";
+		}
+		
+		async function colorMath(current, max) {
+		   // uses the css styles
+		   var percent = current / max;
+		   switch (true) {
+		      case (percent < 0.01):
+		         return "zeroUsage";
+		      case (percent < 0.12):
+		         return "someUsage";
+		      case (percent < 0.25):
+		         return "quartUsage";
+		      case (percent < 0.50):
+		         return "halfUsage";
+		      case (percent < 0.75):
+		         return "halfHalfUsage";
+		      case (percent > 0.99):
+		         return "fullUsage";
+		   }
+		}
+
+      async function doGR(data, bigSpacing, cpuUsage, id, isSub, length){
+         if (!isSub) return await groupRender(data, bigSpacing, cpuUsage, id, isSub, length)
+         return "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;" + data.name;
+      }
+
+      async function subList(isSub, id) {
+         expanded.push(id);
+         await htmlGenerator(data, isSub, id)
+      }
+
+		async function groupRender(data, bigSpacing, cpuUsage, id, isSub, length) {
+         if (!data["grouped"] == true) return "&nbsp;&nbsp;&nbsp;&nbsp;" + data.name;
+         var temp = `subList(1, ${id});`;
+         var onClick = `${temp}`
+         var name = '<button style="border: none;" onclick="'+ onClick +'"> ' + '>&nbsp;' + data.name + ' (' + Object.keys(data["subps"]).length + ')</button>';
+         for (element in data["subps"]) {
+            //
+         }
+         return name;
+      }
+		async function htmlGenerator(data, isSub, direct) {
+		var bigSpacing = "";
+      var cpuUsage = ((100 * data.cpu) / (100 * parseInt(cores)));
+      var id = Math.floor(Math.random() * 100000);
+		if (doBigSpacing) bigSpacing = "<br>";
+ var xx = `<div style='width: 100%; display: flex; '>
+	<div id='${id}' style='float: left; width: 15%;'>
+		<div>
+			<pr>
+				${await doGR(data, bigSpacing, cpuUsage, id, isSub, out.length - 1)}
+				<pr>&nbsp;</pr>
+			</pr>
+		</div>
+	</div>
+	<div hidden class='vertical-line'></div>
+	<div style='float: left; width: 7.5%; text-align: right;'>
+		<div>
+			<pr>
+				${data.pid}
+				<pr>&nbsp;</pr>
+			</pr>
+		</div>
+	</div>
+	<div class='vertical-line aligner1 ${await colorMath(cpuUsage, totCPU)}'>
+		<div>
+			<pr>
+				${cpuUsage.toString().substring(0, 4)}%
+				<pr>&nbsp;</pr>
+			</pr>
+		</div>
+	</div>
+	<div class='vertical-line aligner1 ${await colorMath(data.memory, totMem)}'>
+		<div>
+			<pr>
+				${await bytesToSize(data.memory)}
+				<pr>&nbsp;</pr>
+			</pr>
+		</div>
+	</div>
+	<div class='vertical-line aligner1 ${await colorMath(0, 100)}'>
+		<div>
+			<pr>
+				${null}%
+				<pr>&nbsp;</pr>
+			</pr>
+		</div>
+	</div>
+	<div class='vertical-line aligner1 ${await colorMath(0, 100)}'>
+		<div>
+			<pr>
+				${null}%
+				<pr>&nbsp;</pr>
+			</pr>
+		</div>
+	</div>
+	<div class='vertical-line aligner1 ${await colorMath(0, 100)}'>
+		<div>
+			<pr>
+				${null}%
+				<pr>&nbsp;</pr>
+			</pr>
+		</div>
+	</div>
+	${bigSpacing}
+	<br style='clear: left;' />
+</div>
+<div style='clear: both; line-height: -20px;'></div>`;
+if (direct) return out.splice(direct, 0, xx);;
+return xx;
+		}
+		
+		async function render(loc, raw, cores) {
+		  console.time("render")
+		  out = [];
+		  var element;
+		  var mem = await $.getJSON("/mem?x=!")
+		  var cpu = 0; // we will calculate the cpu usage from each of the processes, its more accurate as the results are tainted otherwise becuase of the influx when processing it.
+		  raw = await $.getJSON("/ps?x=!&sort="+sortBy);
+		  sortedArray = Object.entries(Object.entries(raw["system"]).reduce((seen, [_, entry]) => {
+		   if (seen.hasOwnProperty(entry.name)) {
+		      var previous = seen[entry.name] ?? {};
+		      // var temp = JSON.parse(JSON.stringify(entry));
+		      if (!previous["grouped"]) {
+		         previous["grouped"] = true;
+		         previous.pid = "";
+		         previous.ppid = "";
+		         previous.ctime = "";
+		         previous.elapsed = "";
+		         previous.timestamp = "";
+		         previous["subps"] = []; 
+		         previous["subps"] = [entry]
+		       }
+		       previous["memory"] += entry.memory;
+		       previous["cpu"] += entry.cpu;
+		       previous["subps"].push(entry);
+		     } else {
+		       seen[entry.name] = entry;
+		     }
+		     return seen;
+		   }, {})).sort(function(a, b) {return b[1][sortBy] - a[1][sortBy]});
+		
+		  for (element of sortedArray) {
+		    var data = element[Object.keys(element)[1]];
+		    var y = 0;
+		    cpu += data.cpu;
+		    if (data.name.includes("Memory Compression")) continue;
+            out.push(await htmlGenerator(data));
+		    };
+		  document.getElementById("cpuUsage").innerHTML = ((100 * cpu) / (100 * parseInt(cores))).toFixed(0).toString() + "%";
+		  document.getElementById("memUsage").innerHTML = `${mem}`.substring(0, 2) + "%";
+		  try {
+		    loc.appendChild(loc.innerHTML = out.join(""));
+		  } catch (error) {
+		    console.log(error, error.stack);
+		  }
+		  console.timeEnd("render")
+		}
+		(async () => {
+         loc = document.getElementById("psList");
+	      raw = await $.getJSON("/ps?x=!&sort="+sortBy);
+		   cores = await $.getJSON("/cpuCores?x=!");
+		   loc.innerHTML = "";
+		
+		   setInterval(async function() {
+		      await render(loc, raw, cores);
+		   }, 3000);
+		})();
+	</script>
+	<!-- End Process List Section-->
+</body>
+</html>
