@@ -64,6 +64,7 @@ async function getPs(sort) {
     await new Promise((r) => setTimeout(r, 1));
   }
   full.system = stats;
+  console.timeEnd("PS")
   return JSON.stringify(full);
 }
 
